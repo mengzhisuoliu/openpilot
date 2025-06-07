@@ -3,10 +3,10 @@ import pyray as rl
 from dataclasses import dataclass
 from cereal import messaging, log
 from openpilot.system.hardware import TICI
-from openpilot.system.ui.lib.application import gui_app, FontWeight, DEFAULT_FPS
+from openpilot.system.ui.lib.application import gui_app, FontWeight, DEFAULT_FPS, Widget
 from openpilot.system.ui.lib.label import gui_text_box
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.selfdrive.ui.ui_state import ui_state
-
 
 ALERT_MARGIN = 40
 ALERT_PADDING = 60
@@ -19,7 +19,6 @@ ALERT_FONT_BIG = 88
 
 SELFDRIVE_STATE_TIMEOUT = 5  # Seconds
 SELFDRIVE_UNRESPONSIVE_TIMEOUT = 10  # Seconds
-
 
 # Constants
 ALERT_COLORS = {
@@ -60,11 +59,11 @@ ALERT_CRITICAL_REBOOT = Alert(
 )
 
 
-class AlertRenderer:
+class AlertRenderer(Widget):
   def __init__(self):
+    super().__init__()
     self.font_regular: rl.Font = gui_app.font(FontWeight.NORMAL)
     self.font_bold: rl.Font = gui_app.font(FontWeight.BOLD)
-    self.font_metrics_cache: dict[tuple[str, int, str], rl.Vector2] = {}
 
   def get_alert(self, sm: messaging.SubMaster) -> Alert | None:
     """Generate the current alert based on selfdrive state."""
@@ -93,8 +92,8 @@ class AlertRenderer:
     # Return current alert
     return Alert(text1=ss.alertText1, text2=ss.alertText2, size=ss.alertSize, status=ss.alertStatus)
 
-  def draw(self, rect: rl.Rectangle, sm: messaging.SubMaster) -> None:
-    alert = self.get_alert(sm)
+  def _render(self, rect: rl.Rectangle) -> None:
+    alert = self.get_alert(ui_state.sm)
     if not alert:
       return
 
@@ -114,7 +113,7 @@ class AlertRenderer:
       return rect
 
     height = (ALERT_FONT_MEDIUM + 2 * ALERT_PADDING if size == log.SelfdriveState.AlertSize.small else
-             ALERT_FONT_BIG + ALERT_LINE_SPACING + ALERT_FONT_SMALL + 2 * ALERT_PADDING)
+              ALERT_FONT_BIG + ALERT_LINE_SPACING + ALERT_FONT_SMALL + 2 * ALERT_PADDING)
 
     return rl.Rectangle(
       rect.x + ALERT_MARGIN,
@@ -152,14 +151,8 @@ class AlertRenderer:
       text_rect.y = rect.y + rect.height // 2
       gui_text_box(text_rect, alert.text2, ALERT_FONT_BIG, alignment=align_ment)
 
-  def _measure_text(self, font: rl.Font, text: str, font_size: int, font_type: str) -> rl.Vector2:
-    key = (text, font_size, font_type)
-    if key not in self.font_metrics_cache:
-      self.font_metrics_cache[key] = rl.measure_text_ex(font, text, font_size, 0)
-    return self.font_metrics_cache[key]
-
   def _draw_centered(self, text, rect, font, font_size, center_y=True, color=rl.WHITE) -> None:
-    text_size = self._measure_text(font, text, font_size, 'bold' if font == self.font_bold else 'regular')
+    text_size = measure_text_cached(font, text, font_size)
     x = rect.x + (rect.width - text_size.x) / 2
     y = rect.y + ((rect.height - text_size.y) / 2 if center_y else 0)
     rl.draw_text_ex(font, text, rl.Vector2(x, y), font_size, 0, color)
